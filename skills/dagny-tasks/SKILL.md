@@ -23,7 +23,8 @@ to complete the OAuth flow.
 | `mcp__dagny__list_projects` | List projects accessible to the authenticated user |
 | `mcp__dagny__create_project` | Create a new project |
 | `mcp__dagny__get_task` | Get full task details including GitHub links. Accepts `task_id` (UUID) or `short_id` (integer) |
-| `mcp__dagny__list_tasks` | List tasks in a project (optional status_id filter, exclude_closed flag) |
+| `mcp__dagny__list_tasks` | List tasks with filters and field selection (see below) |
+| `mcp__dagny__search_tasks` | Text search on task titles/descriptions, returns lightweight results |
 | `mcp__dagny__create_task` | Create a task (with optional deps, tags, status, assignee, value, repo) |
 | `mcp__dagny__update_task` | Update task fields (title, description, status, deps, tags, estimate, value, assignee, collaborators) |
 | `mcp__dagny__list_statuses` | List statuses configured for a project |
@@ -32,6 +33,31 @@ to complete the OAuth flow.
 | `mcp__dagny__push_task_to_github` | Create a GitHub issue from a task and link them |
 | `mcp__dagny__list_project_repos` | List GitHub repos linked to a project |
 | `mcp__dagny__list_task_prs` | List pull requests linked to a task with review state |
+
+### list_tasks Parameters
+
+For large projects, use these parameters to reduce context consumption:
+
+- **`fields`**: Comma-separated list of fields to include. Only `task_id` and
+  `short_id` are always returned. Options: `title`, `description`, `status`,
+  `tags`, `estimate`, `value`, `effectiveValue`, `depends_on`, `assigneeId`, `hasPR`.
+  Example: `fields=title,status,deps` for a lightweight graph overview.
+- **`limit`** / **`offset`**: Pagination. Use `limit=20` to cap results.
+- **`status_id`**: Filter to a single status UUID.
+- **`exclude_closed`**: Omit tasks in closed statuses (default false).
+- **`tags`**: Comma-separated tag filter (OR logic).
+- **`assignee_id`**: Filter to tasks assigned to a specific user.
+- **`has_value`**: Filter to tasks with business value set.
+
+**Recommended pattern for large projects**: Start with
+`list_tasks(fields="title,status,deps", exclude_closed=true)` to get the
+graph shape, then use `get_task` on specific tasks for full details.
+
+### search_tasks
+
+Lightweight text search across task titles and descriptions. Returns only
+`task_id`, `short_id`, `title`, and `statusId`. Use this to find specific
+tasks without loading the full list.
 
 ## Task References
 
