@@ -1,0 +1,17 @@
+{
+  "name": "dagny-plugin",
+  "owner": {
+    "name": "Kris Nuttycombe",
+    "url": "https://github.com/nuttycom"
+  },
+  "plugins": [
+    {
+      "name": "dagny",
+      "source": {
+        "source": "github",
+        "repo": "nuttycom/dagny-plugin"
+      },
+      "description": "DAG-oriented task management with GitHub integration. Provides task planning, PR workflow automation, and bidirectional GitHub sync via MCP."
+    }
+  ]
+}
