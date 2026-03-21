@@ -1,0 +1,13 @@
+{
+  "name": "dagny",
+  "version": "0.1.0",
+  "description": "DAG-oriented task management with GitHub integration. Provides task planning, PR workflow automation, and bidirectional GitHub sync via MCP.",
+  "author": {
+    "name": "Kris Nuttycombe",
+    "url": "https://github.com/nuttycom"
+  },
+  "homepage": "https://dagny.co",
+  "repository": "https://github.com/nuttycom/dagny-plugin",
+  "license": "MIT",
+  "keywords": ["task-management", "dag", "github", "project-management"]
+}

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "dagny": {
+      "type": "url",
+      "url": "https://dagny.co/mcp"
+    }
+  }
+}
