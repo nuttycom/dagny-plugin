@@ -20,6 +20,7 @@ to complete the OAuth flow.
 
 | Tool | Purpose |
 |------|---------|
+| `mcp__dagny__whoami` | Get the authenticated user's ID, username, and email |
 | `mcp__dagny__list_projects` | List projects accessible to the authenticated user |
 | `mcp__dagny__create_project` | Create a new project |
 | `mcp__dagny__get_task` | Get full task details including GitHub links. Accepts `task_id` (UUID) or `short_id` (integer) |
@@ -46,7 +47,7 @@ For large projects, use these parameters to reduce context consumption:
 - **`status_id`**: Filter to a single status UUID.
 - **`exclude_closed`**: Omit tasks in closed statuses (default false).
 - **`tags`**: Comma-separated tag filter (OR logic).
-- **`assignee_id`**: Filter to tasks assigned to a specific user.
+- **`assignee_id`**: Filter to tasks assigned to a specific user UUID, or `"me"` for the current user.
 - **`has_value`**: Filter to tasks with business value set.
 
 **Recommended pattern for large projects**: Start with
