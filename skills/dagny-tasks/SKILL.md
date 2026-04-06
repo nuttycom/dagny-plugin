@@ -39,20 +39,36 @@ to complete the OAuth flow.
 
 For large projects, use these parameters to reduce context consumption:
 
+- **`filter`**: A `TaskFilter` JSON object with inclusion-based semantics.
+  All fields are optional; omitted fields impose no constraint.
+
+  | Field | Type | Default | Description |
+  |-------|------|---------|-------------|
+  | `statusIds` | `string[]` or `null` | `null` | Include only tasks with these status UUIDs |
+  | `assigneeIds` | `string[]` or `null` | `null` | Include only tasks assigned to these user UUIDs |
+  | `repoIds` | `string[]` or `null` | `null` | Include only tasks linked to these GitHub repo UUIDs |
+  | `tags` | `string[]` or `null` | `null` | Include only tasks with at least one of these tags |
+  | `hasPR` | `bool` or `null` | `null` | If true, only tasks with a linked PR; if false, only tasks without |
+  | `includePRTasks` | `bool` | `true` | Include tasks tagged `pr` |
+  | `includeTaskIds` | `string[]` or `null` | `null` | Include these specific task UUIDs (intersected with other filters) |
+  | `includeBlockers` | `bool` | `false` | Augment results with transitive upstream blockers |
+  | `includeBlocked` | `bool` | `false` | Augment results with transitive downstream dependents |
+
+  When `includeBlockers` or `includeBlocked` is true, closed tasks are excluded
+  from the walk — completed blockers are considered resolved.
+
 - **`fields`**: Comma-separated list of fields to include. Only `task_id` and
   `short_id` are always returned. Options: `title`, `description`, `status`,
   `tags`, `estimate`, `value`, `effectiveValue`, `depends_on`, `assigneeId`, `hasPR`.
   Example: `fields=title,status,deps` for a lightweight graph overview.
 - **`limit`** / **`offset`**: Pagination. Use `limit=20` to cap results.
-- **`status_id`**: Filter to a single status UUID.
-- **`exclude_closed`**: Omit tasks in closed statuses (default false).
-- **`tags`**: Comma-separated tag filter (OR logic).
-- **`assignee_id`**: Filter to tasks assigned to a specific user UUID, or `"me"` for the current user.
-- **`has_value`**: Filter to tasks with business value set.
 
 **Recommended pattern for large projects**: Start with
-`list_tasks(fields="title,status,deps", exclude_closed=true)` to get the
-graph shape, then use `get_task` on specific tasks for full details.
+`list_tasks(filter={"statusIds": [<open-status-uuids>]}, fields="title,status,deps")`
+to get the graph shape, then use `get_task` on specific tasks for full details.
+
+**To exclude closed statuses**: call `list_statuses` first, collect the UUIDs of
+non-closed statuses, then pass them as `filter.statusIds`.
 
 ### search_tasks
 

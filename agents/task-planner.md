@@ -20,7 +20,8 @@ Given a feature description, bug report, or initiative, you:
 
 1. First, call `list_projects` to find the target project.
 2. Call `list_statuses` to get the default status for new tasks.
-3. Call `list_tasks` with `fields=title,status,deps` and `exclude_closed=true`
+3. Call `list_statuses` to get status UUIDs, then call `list_tasks` with
+   `filter={"statusIds": [<non-closed-status-uuids>]}` and `fields=title,status,deps`
    to understand the existing graph shape without consuming excessive context.
    Use `search_tasks` to check for potential duplicates by keyword.
 4. Plan the task DAG:
