@@ -34,6 +34,7 @@ to complete the OAuth flow.
 | `mcp__dagny__push_task_to_github` | Create a GitHub issue from a task and link them |
 | `mcp__dagny__list_project_repos` | List GitHub repos linked to a project |
 | `mcp__dagny__list_task_prs` | List pull requests linked to a task with review state |
+| `mcp__dagny__get_task_history` | Get event history for a task from the event log. Accepts `task_id` (UUID) or `short_id` (integer) |
 
 ### list_tasks Parameters
 
@@ -59,7 +60,7 @@ For large projects, use these parameters to reduce context consumption:
 
 - **`fields`**: Comma-separated list of fields to include. Only `task_id` and
   `short_id` are always returned. Options: `title`, `description`, `status`,
-  `tags`, `estimate`, `value`, `effectiveValue`, `depends_on`, `assigneeId`, `hasPR`.
+  `tags`, `estimate`, `value`, `effectiveValue`, `depends_on`, `assigneeId`, `prSummaries`.
   Example: `fields=title,status,deps` for a lightweight graph overview.
 - **`limit`** / **`offset`**: Pagination. Use `limit=20` to cap results.
 
@@ -75,6 +76,16 @@ non-closed statuses, then pass them as `filter.statusIds`.
 Lightweight text search across task titles and descriptions. Returns only
 `task_id`, `short_id`, `title`, and `statusId`. Use this to find specific
 tasks without loading the full list.
+
+### get_task_history
+
+Returns the full event log for a task, ordered by time. Each entry contains:
+- `id`: event UUID
+- `initiatedById`: user UUID that triggered the event
+- `eventTime`: ISO 8601 timestamp
+- `action`: raw JSON of the event (e.g., `{"createTask": {...}}`, `{"setTitle": {...}}`, `{"setStatus": {...}}`)
+
+Useful for auditing when and how task data was changed.
 
 ## Task References
 
