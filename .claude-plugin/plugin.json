@@ -1,6 +1,6 @@
 {
   "name": "dagny",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "DAG-oriented task management with GitHub integration. Provides task planning, PR workflow automation, and bidirectional GitHub sync via MCP.",
   "author": {
     "name": "Kris Nuttycombe",
