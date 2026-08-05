@@ -20,8 +20,18 @@ cannot_check() {
   exit 0
 }
 
+# GitHub links an issue from a PR body via any of nine keyword forms, and the
+# issue may be named by "#N", "owner/repo#N", or its full URL.
+# https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue
+#
+# The leading alternation stands in for a word boundary, so that "prefixes #1"
+# does not read as "fixes #1".
 has_keyword() {
-  echo "$1" | grep -qiE '(fixes|closes|resolves)\s+#[0-9]+'
+  local keyword='(close[sd]?|fix(es|ed)?|resolve[sd]?)'
+  local repo='[-_a-z0-9.]+/[-_a-z0-9.]+'
+  local issue="((${repo})?#[0-9]+|https?://github\.com/${repo}/issues/[0-9]+)"
+
+  echo "$1" | grep -qiE "(^|[^[:alnum:]])${keyword}[[:space:]]+${issue}"
 }
 
 input=$(cat)
