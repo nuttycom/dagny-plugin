@@ -35,6 +35,8 @@ to complete the OAuth flow.
 | `mcp__dagny__list_project_repos` | List GitHub repos linked to a project |
 | `mcp__dagny__add_project_repo` | Link a GitHub repo to a project and check the Dagny App is installed on it (project admins). Relay `action_required` to the user when the App is missing |
 | `mcp__dagny__set_repo_import_policy` | Set what a project mirrors unasked from a linked repo: `all`, `manual`, or `blockers` (project admins) |
+| `mcp__dagny__import_github_issues` | Import issues from a linked repo as tasks, with their blockers unless `include_blockers` is false; per-item outcomes, and `action_required` to relay when a repo's App token could not be obtained |
+| `mcp__dagny__refresh_task_github` | Refresh a task from its linked issue or pull request and return the report (conflicts, dependencies, imported blockers, truncation) |
 | `mcp__dagny__list_task_prs` | List pull requests linked to a task with review state |
 | `mcp__dagny__get_task_history` | Get event history for a task from the event log. Accepts `task_id` (UUID) or `short_id` (integer) |
 
