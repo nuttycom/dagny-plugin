@@ -39,6 +39,11 @@ to complete the OAuth flow.
 | `mcp__dagny__refresh_task_github` | Refresh a task from its linked issue or pull request and return the report (conflicts, dependencies, imported blockers, truncation) |
 | `mcp__dagny__list_task_prs` | List pull requests linked to a task with review state |
 | `mcp__dagny__get_task_history` | Get event history for a task from the event log. Accepts `task_id` (UUID) or `short_id` (integer) |
+| `mcp__dagny__list_linear_teams` | List the project's Linear workspaces and linked teams with keys and import policies. Relay `action_required` to the user when no workspace is connected: connecting takes a browser |
+| `mcp__dagny__link_linear_team` | Link a Linear team by key, from those Linear grants Dagny, optionally setting its import policy (project admins) |
+| `mcp__dagny__set_linear_team_import_policy` | Set a linked team's import policy: `all` (every new issue becomes a task) or `manual` (only issues imported on request) (project admins) |
+| `mcp__dagny__list_linear_issues` | One page of a linked team's open issues, each marked `isImported`; a query shaped like `ENG-12` finds that issue; pass `nextCursor` back as `cursor` |
+| `mcp__dagny__import_linear_issues` | Import Linear issues by identifier; per-item outcomes (imported, linked to the existing mirror of its GitHub issue, imported through GitHub, …), and `action_required` to relay when the workspace must be reconnected |
 
 ### list_tasks Parameters
 
