@@ -34,6 +34,38 @@ has_keyword() {
   echo "$1" | grep -qiE "(^|[^[:alnum:]])${keyword}[[:space:]]+${issue}"
 }
 
+# Refuse the command: the body was read, and it has no closing keyword.
+deny_missing() {
+  jq -n '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: "PR body is missing a closing keyword (Fixes #N, Closes #N, or Resolves #N). Add one to auto-close the linked GitHub issue on merge."
+    }
+  }'
+  exit 0
+}
+
+# Print the text of the heredoc that feeds the gh pr create line of a
+# command: the lines after that line, up to the delimiter. "<<-" strips
+# leading tabs, as the shell does. Fails when the gh line opens no heredoc.
+heredoc_body() {
+  local opener="<<(-?)[[:space:]]*[\"']?([A-Za-z_][A-Za-z0-9_]*)[\"']?"
+  local line strip="" delim="" in_body=false
+  while IFS= read -r line; do
+    if $in_body; then
+      [[ -n "$strip" ]] && line="${line#"${line%%[!$'\t']*}"}"
+      [[ "$line" == "$delim" ]] && return 0
+      printf '%s\n' "$line"
+    elif [[ "$line" == *"gh pr create"* && "$line" =~ $opener ]]; then
+      strip=${BASH_REMATCH[1]}
+      delim=${BASH_REMATCH[2]}
+      in_body=true
+    fi
+  done <<< "$1"
+  $in_body
+}
+
 input=$(cat)
 tool_name=$(echo "$input" | jq -r '.tool_name // empty')
 tool_input=$(echo "$input" | jq -r '.tool_input.command // empty')
@@ -61,6 +93,13 @@ case "$tool_input" in
     case "$flag" in
       *--body-file*|*-F*)
         if [[ "$arg" == "-" ]]; then
+          # A heredoc on the gh line is gh's stdin, so its text is the body
+          # exactly and its verdict is final either way. Any other stdin
+          # (a pipe, a redirect) is not visible from here.
+          if body=$(heredoc_body "$tool_input"); then
+            has_keyword "$body" && exit 0
+            deny_missing
+          fi
           cannot_check "the body is read from stdin"
         fi
 
@@ -93,13 +132,7 @@ case "$tool_input" in
         fi
         ;;
     esac
-    jq -n '{
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: "deny",
-        permissionDecisionReason: "PR body is missing a closing keyword (Fixes #N, Closes #N, or Resolves #N). Add one to auto-close the linked GitHub issue on merge."
-      }
-    }'
+    deny_missing
     ;;
   # With no body flag at all, the body comes from --fill, a pull request
   # template, or an editor, none of which are visible from here.

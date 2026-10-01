@@ -115,10 +115,21 @@ check "a longer word ending in a keyword" "gh pr create --body 'This prefixes #1
 check "a different verb"                  "gh pr create --body 'Addresses #1'"                          block
 check "no space before the number"        "gh pr create --body 'Closes#1'"                              block
 
+echo "the body is a heredoc on stdin -> its text decides"
+check "quoted delimiter, keyword"         $'gh pr create --title t --body-file - <<\'EOF\'\nSummary.\n\nFixes #12\nEOF'      allow
+check "unquoted delimiter, keyword"       $'gh pr create --body-file - <<EOF\nCloses #3\nEOF'                    allow
+check "-F -, other delimiter"             $'gh pr create -F - <<"BODY"\nResolves #9\nBODY'                       allow
+check "<<- with tab-indented end"         $'gh pr create --body-file - <<-EOF\n\tFixes #4\n\tEOF'               allow
+check "heredoc without a keyword"         $'gh pr create --body-file - <<\'EOF\'\nJust a summary.\nEOF'         block
+check "keyword only outside the heredoc"  $'gh pr create --title \'Fixes #5\' --body-file - <<\'EOF\'\nNo keyword.\nEOF' block
+check "keyword after the heredoc ends"    $'gh pr create --body-file - <<\'EOF\'\nNo keyword.\nEOF\necho Fixes #6'  block
+
 echo "the body cannot be read -> warn, never a silent pass"
 check "--fill"                            "gh pr create --fill"                                         warn
 check "no body argument at all"           "gh pr create --title t"                                      warn
-check "--body-file - (stdin)"             "gh pr create --body-file -"                                  warn
+check "--body-file - (stdin, no heredoc)"  "gh pr create --body-file -"                                  warn
+check "stdin from a pipe"                 "cat notes.md | gh pr create --body-file -"                   warn
+check "a heredoc that feeds another line"  $'cat > b.md <<\'EOF\'\nFixes #8\nEOF\ngh pr create --body-file - < b.md'  warn
 check "unreadable body file"              "gh pr create --body-file $WORK/absent.md"                    warn
 
 echo "the output uses the documented PreToolUse schema"
