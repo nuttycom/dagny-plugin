@@ -42,8 +42,16 @@ to complete the OAuth flow.
 | `mcp__dagny__list_linear_teams` | List the project's Linear workspaces and linked teams with keys and import policies. Relay `action_required` to the user when no workspace is connected: connecting takes a browser |
 | `mcp__dagny__link_linear_team` | Link a Linear team by key, from those Linear grants Dagny, optionally setting its import policy (project admins) |
 | `mcp__dagny__set_linear_team_import_policy` | Set a linked team's import policy: `all` (every new issue becomes a task) or `manual` (only issues imported on request) (project admins) |
-| `mcp__dagny__list_linear_issues` | One page of a linked team's open issues, each marked `isImported`; a query shaped like `ENG-12` finds that issue; pass `nextCursor` back as `cursor` |
+| `mcp__dagny__list_linear_issues` | One page of a linked team's open issues, most recently updated first, each with a `disposition`: `new` (importing builds a task from Linear), `linksExisting` (importing links the task already mirroring the GitHub issue in `githubRef`), `viaGitHub` (importing mirrors `githubRef` from GitHub first), or `imported`; a query shaped like `ENG-12` finds that issue, any other matches titles; pass `nextCursor` back as `cursor` |
 | `mcp__dagny__import_linear_issues` | Import Linear issues by identifier; per-item outcomes (imported, linked to the existing mirror of its GitHub issue, imported through GitHub, …), and `action_required` to relay when the workspace must be reconnected |
+| `mcp__dagny__push_task_to_linear` | Create a Linear issue from a task in a linked team (by `team_key`) and link them; it starts in the state the team's status map gives the task's status, carries the task's GitHub issues, and mirrors its blockers and dependents already on Linear as blocks relations. Refused for a task already on Linear or whose GitHub issue already has a Linear issue; relay `action_required` when the workspace must be reconnected |
+| `mcp__dagny__list_labels` | List a project's labels: subsystems (authored) and objectives (derived from objective nodes), with their definitions |
+| `mcp__dagny__create_subsystem` | Create a subsystem label from a color, name, description, exclusions, and example task titles; the short code is derived from the name when left out (maintainers) |
+| `mcp__dagny__update_subsystem` | Update a subsystem's code, color, name, description, exclusions, or examples; omitted arguments keep their values (maintainers) |
+| `mcp__dagny__set_label_pin` | Pin a label on (`member: true`) or off (`member: false`) for a task, overriding the model's inference. Accepts `task_id` or `short_id` |
+| `mcp__dagny__clear_label_pin` | Remove a task's pin so the label follows the model's inference again. Accepts `task_id` or `short_id` |
+| `mcp__dagny__classification_coverage` | How well a scheme's taxonomy fits the project: counts, tags and repositories over-represented in the gap bucket, and the bucket ranked by the model's "other" probability; use it to draft missing subsystems |
+| `mcp__dagny__run_classification` | Classify the project's tasks now, whatever the automatic-run settings say; answers how many tasks were queued (maintainers) |
 
 ### list_tasks Parameters
 
