@@ -52,6 +52,14 @@ to complete the OAuth flow.
 | `mcp__dagny__clear_label_pin` | Remove a task's pin so the label follows the model's inference again. Accepts `task_id` or `short_id` |
 | `mcp__dagny__classification_coverage` | How well a scheme's taxonomy fits the project: counts, tags and repositories over-represented in the gap bucket, and the bucket ranked by the model's "other" probability; use it to draft missing subsystems |
 | `mcp__dagny__run_classification` | Classify the project's tasks now, whatever the automatic-run settings say; answers how many tasks were queued (maintainers) |
+| `mcp__dagny__list_notes` | The user's own notes on a `day`, in one project or, without `project_id`, in every project |
+| `mcp__dagny__create_note` | Create one of the user's notes in a project on a `day`. A `#N` in the body references task N. A new note is a `todo` visible to the whole project unless `visibility: "private"` is given; `copied_from_id` carries one of the user's notes forward to the new day |
+| `mcp__dagny__update_note` | Change one of the user's notes: its `day`, `state` (`todo`, `in_progress`, `done`, `friction`), `visibility` (`private`, `project_public`), or `body`, or `dismissed`. Omitted arguments keep their values |
+| `mcp__dagny__delete_note` | Delete one of the user's notes |
+| `mcp__dagny__list_task_notes` | The notes that reference a task: the user's own, and the project-public notes of other members. Accepts `task_id` or `short_id` |
+| `mcp__dagny__list_team_notes` | A project's notes on the days `from` to `to`, inclusive: the user's own, and the project-public notes of other members |
+| `mcp__dagny__search_notes` | Search the user's own notes for text, newest first, in one project or every project; `limit` defaults to 50, at most 200 |
+| `mcp__dagny__list_note_days` | The days `from` to `to` on which the user has notes, with counts, in one project or every project |
 
 ### list_tasks Parameters
 
@@ -93,6 +101,13 @@ non-closed statuses, then pass them as `filter.statusIds`.
 Lightweight text search across task titles and descriptions. Returns only
 `task_id`, `short_id`, `title`, and `statusId`. Use this to find specific
 tasks without loading the full list.
+
+### Note days
+
+A note tool takes each day as `YYYY-MM-DD`. A tool that stores a day
+(`create_note`, `update_note`) also takes `utc_offset_minutes`, the user's
+offset from UTC on that day (for example `-420` for UTC-7); it defaults
+to 0.
 
 ### get_task_history
 

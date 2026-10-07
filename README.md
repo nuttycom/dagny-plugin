@@ -10,7 +10,7 @@ pull-request workflow.
 
 | Component | Description |
 |-----------|-------------|
-| MCP server `dagny` | The Dagny tools (projects, tasks, statuses, dependencies, GitHub and Linear integration) at `https://dagny.co/mcp`. |
+| MCP server `dagny` | The Dagny tools (projects, tasks, statuses, dependencies, notes, GitHub and Linear integration) at `https://dagny.co/mcp`. |
 | Skill `dagny-tasks` | How to use the tools: task references, filters, and the PR-based workflow. |
 | Agent `task-planner` | Breaks a feature or bug into a graph of tasks with dependencies, estimates, and values. |
 | Agent `pr-workflow` | Creates the branch and PR for an implemented task and updates the task's status. |
