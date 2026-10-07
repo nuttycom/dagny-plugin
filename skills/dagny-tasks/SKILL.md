@@ -37,13 +37,13 @@ to complete the OAuth flow.
 | `mcp__dagny__set_repo_import_policy` | Set what a project mirrors unasked from a linked repo: `all`, `manual`, or `blockers` (project admins) |
 | `mcp__dagny__import_github_issues` | Import issues from a linked repo as tasks, with their blockers unless `include_blockers` is false; per-item outcomes, and `action_required` to relay when a repo's App token could not be obtained |
 | `mcp__dagny__refresh_task_github` | Refresh a task from its linked issue or pull request and return the report (conflicts, dependencies, imported blockers, truncation) |
-| `mcp__dagny__list_task_prs` | List pull requests linked to a task with review state |
+| `mcp__dagny__list_task_prs` | List pull requests linked to a task with review state. Requires `project_id`, and the task must belong to that project |
 | `mcp__dagny__get_task_history` | Get event history for a task from the event log. Accepts `task_id` (UUID) or `short_id` (integer) |
 | `mcp__dagny__list_linear_teams` | List the project's Linear workspaces and linked teams with keys and import policies. Relay `action_required` to the user when no workspace is connected: connecting takes a browser |
-| `mcp__dagny__link_linear_team` | Link a Linear team by key, from those Linear grants Dagny, optionally setting its import policy (project admins) |
+| `mcp__dagny__link_linear_team` | Link a Linear team by key, from those Linear grants Dagny that the user's own Linear account can read, optionally setting its import policy (project admins). Relay `action_required` when the user must first connect their own Linear account: connecting takes a browser |
 | `mcp__dagny__set_linear_team_import_policy` | Set a linked team's import policy: `all` (every new issue becomes a task) or `manual` (only issues imported on request) (project admins) |
 | `mcp__dagny__list_linear_issues` | One page of a linked team's open issues, most recently updated first, each with a `disposition`: `new` (importing builds a task from Linear), `linksExisting` (importing links the task already mirroring the GitHub issue in `githubRef`), `viaGitHub` (importing mirrors `githubRef` from GitHub first), or `imported`; a query shaped like `ENG-12` finds that issue, any other matches titles; pass `nextCursor` back as `cursor` |
-| `mcp__dagny__import_linear_issues` | Import Linear issues by identifier; per-item outcomes (imported, linked to the existing mirror of its GitHub issue, imported through GitHub, …), and `action_required` to relay when the workspace must be reconnected |
+| `mcp__dagny__import_linear_issues` | Import Linear issues by identifier; per-item outcomes (imported, linked to the existing mirror of its GitHub issue, imported through GitHub, `teamNotLinked`, `notFound`, …), and `action_required` to relay when the workspace must be reconnected. An issue of a team the user's own Linear account cannot read is `notFound` |
 | `mcp__dagny__push_task_to_linear` | Create a Linear issue from a task in a linked team (by `team_key`) and link them; it starts in the state the team's status map gives the task's status, carries the task's GitHub issues, and mirrors its blockers and dependents already on Linear as blocks relations. Refused for a task already on Linear or whose GitHub issue already has a Linear issue; relay `action_required` when the workspace must be reconnected |
 | `mcp__dagny__list_labels` | List a project's labels: subsystems (authored) and objectives (derived from objective nodes), with their definitions |
 | `mcp__dagny__create_subsystem` | Create a subsystem label from a color, name, description, exclusions, and example task titles; the short code is derived from the name when left out (maintainers) |
@@ -52,6 +52,14 @@ to complete the OAuth flow.
 | `mcp__dagny__clear_label_pin` | Remove a task's pin so the label follows the model's inference again. Accepts `task_id` or `short_id` |
 | `mcp__dagny__classification_coverage` | How well a scheme's taxonomy fits the project: counts, tags and repositories over-represented in the gap bucket, and the bucket ranked by the model's "other" probability; use it to draft missing subsystems |
 | `mcp__dagny__run_classification` | Classify the project's tasks now, whatever the automatic-run settings say; answers how many tasks were queued (maintainers) |
+| `mcp__dagny__list_notes` | The user's own notes on a `day`, in one project or, without `project_id`, in every project |
+| `mcp__dagny__create_note` | Create one of the user's notes in a project on a `day`. A `#N` in the body references task N. A new note is a `todo` visible to the whole project unless `visibility: "private"` is given; `copied_from_id` carries one of the user's notes forward to the new day |
+| `mcp__dagny__update_note` | Change one of the user's notes: its `day`, `state` (`todo`, `in_progress`, `done`, `friction`), `visibility` (`private`, `project_public`), or `body`, or `dismissed`. Omitted arguments keep their values |
+| `mcp__dagny__delete_note` | Delete one of the user's notes |
+| `mcp__dagny__list_task_notes` | The notes that reference a task: the user's own, and the project-public notes of other members. Accepts `task_id` or `short_id` |
+| `mcp__dagny__list_team_notes` | A project's notes on the days `from` to `to`, inclusive: the user's own, and the project-public notes of other members |
+| `mcp__dagny__search_notes` | Search the user's own notes for text, newest first, in one project or every project; `limit` defaults to 50, at most 200 |
+| `mcp__dagny__list_note_days` | The days `from` to `to` on which the user has notes, with counts, in one project or every project |
 
 ### list_tasks Parameters
 
@@ -93,6 +101,13 @@ non-closed statuses, then pass them as `filter.statusIds`.
 Lightweight text search across task titles and descriptions. Returns only
 `task_id`, `short_id`, `title`, and `statusId`. Use this to find specific
 tasks without loading the full list.
+
+### Note days
+
+A note tool takes each day as `YYYY-MM-DD`. A tool that stores a day
+(`create_note`, `update_note`) also takes `utc_offset_minutes`, the user's
+offset from UTC on that day (for example `-420` for UTC-7); it defaults
+to 0.
 
 ### get_task_history
 
