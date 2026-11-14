@@ -25,7 +25,7 @@ to complete the OAuth flow.
 | `mcp__dagny__create_project` | Create a new project |
 | `mcp__dagny__get_task` | Get full task details including GitHub links. Accepts `task_id` (UUID) or `short_id` (integer) |
 | `mcp__dagny__list_tasks` | List tasks with filters and field selection (see below) |
-| `mcp__dagny__search_tasks` | Text search on task titles/descriptions, returns lightweight results |
+| `mcp__dagny__search_tasks` | One page of tasks matching a text, short id, or GitHub issue number, as lightweight results with each task's status; open tasks only unless `include_closed` is true (see below) |
 | `mcp__dagny__create_task` | Create a task (with optional deps, tags, status, assignee, value, repo) |
 | `mcp__dagny__update_task` | Update task fields (title, description, status, deps, tags, estimate, value, assignee, collaborators) |
 | `mcp__dagny__list_statuses` | List statuses configured for a project |
@@ -98,9 +98,37 @@ non-closed statuses, then pass them as `filter.statusIds`.
 
 ### search_tasks
 
-Lightweight text search across task titles and descriptions. Returns only
-`task_id`, `short_id`, `title`, and `statusId`. Use this to find specific
-tasks without loading the full list.
+Finds tasks without loading the full list. The `query` matches a task's
+short id (`42` or `#42`), the number of its linked GitHub issue or pull
+request, its title, or its description, ranked in that order; a title that
+starts with the query ranks before one that only contains it.
+
+| Argument | Type | Default | Description |
+|----------|------|---------|-------------|
+| `query` | `string` | required | The text to match |
+| `include_closed` | `bool` | `false` | Match tasks in closed statuses too; they come after every open match |
+| `limit` | `int` | `10` | Tasks per page: a positive integer, at most 100 |
+| `offset` | `int` | `0` | Matches to skip, for later pages: a non-negative integer |
+
+The result is one page:
+
+```json
+{"tasks": [
+   {"task_id": "…", "short_id": 12, "title": "…", "statusId": "…",
+    "statusName": "In Progress", "statusIsClosed": false},
+   {"task_id": "…", "short_id": 3, "title": "…", "objectiveState": "active"}
+ ],
+ "hasMore": true}
+```
+
+- A task gives its `statusId`, `statusName`, and `statusIsClosed`. The two
+  last are `null` for a status the project does not list.
+- An objective gives `objectiveState` in place of the status fields.
+- When `hasMore` is true, call again with `offset` increased by the number
+  of tasks returned to get the next page.
+
+To look for prior work, such as a completed task or a Wontfix decision,
+pass `include_closed: true`.
 
 ### Note days
 
