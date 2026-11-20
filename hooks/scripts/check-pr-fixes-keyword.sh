@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# PreToolUse hook for Bash(gh pr create:*)
+# PreToolUse hook for Bash commands that run "gh pr create".
 # Reads the tool use input from stdin and checks that the PR body
-# contains a "Fixes #N" closing keyword.
+# contains a "Fixes #N" closing keyword. A command is let through unchecked
+# only when only_mentions_pr_create recognizes it as a sentence of the small
+# language that the comment on that function states. Every other command
+# that contains "gh pr create" is checked.
 
 set -euo pipefail
 
@@ -66,6 +69,559 @@ heredoc_body() {
   $in_body
 }
 
+# Tells whether a command only mentions "gh pr create": the whole command is
+# a sentence of the small language below. The function reads the command
+# once, from left to right, and refuses at the first character or construct
+# that the language does not name. It skips nothing that it does not know.
+#
+# What the language establishes, apart from the limits at the end of this
+# comment:
+#
+# - Every simple command of a sentence is one of the builtins and programs
+#   that are listed below.
+# - None of them runs a program that the sentence names in a word, or that
+#   the sentence writes into a file.
+# - No word gives one of them a text in a language of the program's own (a
+#   script, a filter, a pattern, a format, a replacement) that names a
+#   program to run, writes a file, or loads a file as code.
+# - No sentence assigns PATH, or any shell variable other than the ones in
+#   which bash keeps its own records. No word assigns a variable, and no
+#   listed builtin defines a function or an alias, or sets an option. The
+#   records that bash keeps while a sentence runs are these: cd changes the
+#   current directory and sets PWD and OLDPWD; pwd -P can set PWD to the
+#   physical name of that directory; the shell remembers where it found a
+#   program; and it updates variables such as $? and $_, which no word of
+#   the language reads.
+# - None of the listed gh commands creates a pull request.
+#
+# The language establishes nothing else. A sentence can still delete or
+# overwrite files, or change things on GitHub.
+#
+# Shape:
+#
+# - The command is one or more simple commands, separated by "|", "&&",
+#   "||", ";", or a newline. Newlines may also follow "|", "&&" and "||".
+#   Nothing else joins commands: no "&", no "|&".
+# - There is no compound command and no grouping. "(", ")", "{" and "}" are
+#   refused outside quotes. A shell keyword ("if", "for", "!", "time", and the
+#   others) is never a command name, because no keyword is in the list of
+#   command names below.
+# - A comment is an unquoted "#" at the start of a word. It runs to the end
+#   of its line.
+# - A simple command is a command name, then words, with redirections among
+#   the words. Nothing comes before the command name: no assignment, and no
+#   redirection.
+#
+# Words:
+#
+# A word is one or more of these segments, written next to each other. Its
+# value is the segments' texts joined.
+#
+# - Bare text: only the characters A-Z a-z 0-9 and
+#   _ @ % + = : , . / - * ? ^ ~ [ ].
+# - A single-quoted string: '...'. Its text is everything between the
+#   quotes, newlines included.
+# - A double-quoted string: "...". It contains no "$" and no backtick, and
+#   no backslash in it is followed by "$", a backtick, a double quote,
+#   another backslash, or a newline. Its text is everything between the
+#   quotes.
+#
+# Outside single quotes, "$" is refused (with the one exception below), and
+# so are a backtick, a backslash outside double quotes, $'...', and $"...".
+# A word that ends where "<" or ">" begins is refused when it is only digits,
+# because the shell reads those digits as a file descriptor.
+#
+# Redirections:
+#
+# Only these: "> word", ">> word", "2> word", "2>> word", "< word", "2>&1",
+# and a heredoc <<'DELIM'. The delimiter of a heredoc is one single-quoted
+# name of letters, digits and "_", written right after "<<", with nothing
+# attached to it. The heredoc's body is the lines after the opener's line,
+# up to a line that is exactly the delimiter. The body is plain text. A line
+# opens at most one heredoc. Every other heredoc form (<<EOF, <<-, <<"EOF", a
+# partly quoted delimiter), a here-string, a process substitution, and every
+# ">&" or "<&" other than "2>&1" are refused.
+#
+# The one exception for "$":
+#
+# A word may be exactly the text below, and only as an argument of
+# "git commit": a double quote and $(cat <<'DELIM', a newline, the lines of
+# a body, a line that is exactly the delimiter, and a line that is exactly
+# a closing parenthesis and a double quote. This is how a commit message is
+# usually written. Nothing else may be inside the substitution.
+#
+#     "$(cat <<'DELIM'
+#     ...lines...
+#     DELIM
+#     )"
+#
+# A line of the body may not contain "(", ")", a single quote, a double
+# quote, a backtick, a backslash, or "$". Bash 3.2 finds the end of "$(" by
+# matching parentheses and quotes in the raw text, not by parsing the
+# heredoc. With such a character in the body it can end the substitution
+# inside the body, and then it runs the rest of the body as commands.
+#
+# Command names:
+#
+# The command name is a bare word, without "=". It is one of the names
+# below, and the rules for the name judge the values of the command's words.
+#
+# - The builtins of bash ": [ cd echo false pwd test true".
+#   - test and [: a word whose value begins with "-" and contains "v" is
+#     refused. With -v these builtins evaluate an array subscript in a
+#     variable name, and that evaluation runs a command substitution
+#     written in the subscript.
+# - The programs "basename cat cmp column comm cut date df dirname du fold
+#   grep head ls nl paste readlink realpath rev sleep stat tac tail tr wc".
+#   No option or operand of these runs another program or writes a file.
+# - The programs "cp mkdir mv rm tee touch", which write files.
+# - The programs "diff rg sort uniq xxd", with these rules:
+#   - diff: a word is refused when its value begins with "--pa"
+#     (--paginate, or an abbreviation of it; --palette too), or begins with
+#     a single "-" and contains "l". That option passes the output through
+#     the program "pr".
+#   - rg: a word is refused when its value begins with "--pre",
+#     "--hostname-bin" or "--search-zip", or begins with a single "-" and
+#     contains "z". These options run a preprocessor, a program that prints
+#     the host name, or the decompression programs that rg finds through
+#     PATH. ("--pre" also refuses --pre-glob and --pretty.)
+#   - sort: a word is refused when its value begins with "--co"
+#     (--compress-program, or an abbreviation of it).
+#   - sort, uniq and xxd: the words that make them write a file are listed
+#     under "Writing a file" below.
+# - git, in the form "git [-C <dir>] <subcommand> ...". The subcommand is
+#   one of "add commit diff grep log notes show status tag", and nothing else
+#   stands before it. For "git grep", a word is refused when its value begins
+#   with "--op" (--open-files-in-pager), or begins with a single "-" and
+#   contains "O".
+# - gh, in the form "gh <group> <command> ...", with the command right after
+#   the group. A word whose value is "--" is refused. In the group pr, a
+#   word whose value is "create" is refused wherever it stands. The groups
+#   and their commands are:
+#   - issue: close comment create edit list reopen status view
+#   - label: create edit list
+#   - pr: checks comment diff edit list ready reopen review status view
+#   - release: create edit list view
+#   - run: list view watch
+#   - search: code commits issues prs repos
+#   - workflow: list view
+#   None of these commands creates a pull request, downloads a file, or
+#   checks out a branch. "gh pr create", its alias "gh pr new", "gh pr
+#   revert" and "gh api" can create a pull request, and are not in the list.
+#
+# These lists are the whole lists. declare, local, export, read, unset, eval,
+# the shells, env, xargs, printf, sed, jq, file, egrep, fgrep, and every
+# other command are not in the language. Some of these are left out for a
+# reason of their own:
+#
+# - printf: "%n" in its format assigns a number to the shell variable that
+#   the matching argument names, PATH among them, and "-v" assigns its
+#   output to a variable. A later command of the sentence would then look
+#   for its program elsewhere.
+# - sed: a sed script can run a command that the script gives (GNU sed's
+#   "e" command, and the "e" flag of its "s" command), and can write files.
+# - jq: a jq filter can load other filters from files ("include" and
+#   "import"), and jq reads a filter from a file with -f.
+# - egrep and fgrep: they can be scripts that print a warning and then run
+#   grep, which the shell finds through PATH.
+#
+# File names:
+#
+# The shell expands a bare "*", "?" or "[" into the names of files, and one
+# word can become several words. A file can be named "-v", "-Osh", or
+# "--output=.git/config". So a word of test, [, diff, rg, sort, uniq, xxd,
+# git, or gh is refused when one of its bare text segments contains "*", "?"
+# or "[". These are the commands whose words the rules judge.
+#
+# Writing a file:
+#
+# A simple command writes a file when it has one of these:
+#
+# - a redirection of output: ">", ">>", "2>", or "2>>" ("2>&1" writes no
+#   file);
+# - one of the command names cp, mkdir, mv, rm, tee, touch;
+# - sort with a word whose value begins with "--o", or begins with a single
+#   "-" and contains "o" (the output file);
+# - uniq or xxd with a word whose value is "-" or "--", or does not begin
+#   with "-". Such a word is an operand, and the second operand is the
+#   output file. It may also be the value of an option.
+# - xxd with a word whose value begins with "-" and contains "r" (revert,
+#   which can patch a file);
+# - git with a word whose value, up to its first "=", begins with "--o" and
+#   is "--output" or the beginning of it (the output file of diff, log and
+#   show).
+#
+# Two kinds of file do not count. A temporary file that a program names
+# itself and removes again does not count, such as a temporary file of sort,
+# or of the shell for a heredoc. The files that git writes inside its .git
+# directory for its own records, such as objects, references, the index and
+# logs, do not count either.
+#
+# A command that writes a file is refused in each of these cases:
+#
+# - It also runs git or gh. git and gh run programs that their own files
+#   name: a hook in ".git/hooks", an editor, a pager, or a file-system
+#   monitor in a configuration file.
+# - It has two simple commands that are not builtins.
+# - It has a simple command that is not a builtin, and another simple
+#   command writes a file.
+#
+# The shell finds a command that is not a builtin by looking in the
+# directories of PATH, and the command may be able to write into one of
+# those directories. So when a command writes a file, the only simple
+# command that the shell may look up in PATH is the one that makes every
+# write. The shell looks that one up before it writes anything. Before its
+# program starts, its redirections can at most empty a file.
+#
+# Limits:
+#
+# - The listed programs and the shell run programs that the files and the
+#   environment name before the command starts: the hooks of git, the
+#   programs that the configuration and the environment variables of git
+#   and gh name (an editor, a pager, the gpg that checks a signature for
+#   --show-signature or a %G placeholder of a format), the options in the
+#   configuration file of rg that RIPGREP_CONFIG_PATH names, the programs in
+#   the directories of PATH, and the functions and aliases that the shell
+#   already has. The language takes them as it finds them.
+# - A relative entry of PATH, such as "." or an empty entry, names a
+#   directory under the current directory, and cd moves it. cd also follows
+#   CDPATH, and the option cdable_vars, when they are set. The entry, those
+#   settings, and the programs that the entry can then name exist before the
+#   command starts: no word assigns a variable, and in a sentence that
+#   writes a file the shell looks up no program after a write. The language
+#   takes them as it finds them.
+# - The shell replaces a bare "~" at the start of a word with a home
+#   directory. The language takes that directory as it finds it.
+#
+# Preconditions: none.
+#
+# Inputs: $1 is the text of a shell command.
+#
+# Output: succeeds when the command is a sentence of the language. Fails
+# otherwise.
+#
+# Side effects: none.
+only_mentions_pr_create() {
+  local LC_ALL=C
+  local cmd=$1
+  local n=${#cmd} i=0 c rest seg line delim word bare glob ending option
+  local builtin_names=' : [ cd echo false pwd test true '
+  local program_names=' basename cat cmp column comm cp cut date df diff dirname du fold grep head ls mkdir mv nl paste readlink realpath rev rg rm sleep sort stat tac tail tee touch tr uniq wc xxd '
+  local git_subcommands=' add commit diff grep log notes show status tag '
+  local gh_commands=' issue/close issue/comment issue/create issue/edit issue/list issue/reopen issue/status issue/view label/create label/edit label/list pr/checks pr/comment pr/diff pr/edit pr/list pr/ready pr/reopen pr/review pr/status pr/view release/create release/edit release/list release/view run/list run/view run/watch search/code search/commits search/issues search/prs search/repos workflow/list workflow/view '
+  # need_command: a command must come next, after "|", "&&" or "||".
+  # in_command: the name of the current simple command has been read.
+  # redirect_target: the next word names the file of a redirection.
+  # heredoc: the delimiter of the heredoc whose body starts after this line.
+  local need_command=0 in_command=0 redirect_target=0 heredoc=''
+  # writer_count: how many simple commands write a file.
+  # program_count: how many simple commands are not builtins.
+  # program_writer_count: how many simple commands are not builtins and
+  # write a file.
+  # uses_git: a simple command is git or gh.
+  local writer_count=0 program_count=0 program_writer_count=0 uses_git=0
+  # The current simple command: its name; whether it writes a file; for git,
+  # how far its form has been read (0 nothing, 1 after -C, 2 after the
+  # directory, 3 after the subcommand) and its subcommand; for gh, its group
+  # and its command.
+  local name='' writes=0 git_state=0 git_sub='' gh_group='' gh_command=''
+
+  while :; do
+    c=${cmd:i:1}
+    if [[ $c == 2 && ${cmd:i+1:1} == '>' ]] && (( in_command && ! redirect_target )); then
+      c='2>'
+    fi
+    ending=0
+    case $c in
+      '') ending=1 ;;
+      ' '|$'\t')
+        i=$(( i + 1 ))
+        continue
+        ;;
+      $'\n') ending=1 ;;
+      '#')
+        (( ! redirect_target )) || return 1
+        rest=${cmd:i}
+        line=${rest%%$'\n'*}
+        i=$(( i + ${#line} ))
+        continue
+        ;;
+      ';')
+        (( in_command )) || return 1
+        ending=1
+        ;;
+      '|')
+        (( in_command )) || return 1
+        [[ ${cmd:i+1:1} != '&' ]] || return 1
+        ending=1
+        ;;
+      '&')
+        (( in_command )) || return 1
+        [[ ${cmd:i+1:1} == '&' ]] || return 1
+        ending=1
+        ;;
+      '<'|'>'|'2>')
+        (( in_command && ! redirect_target )) || return 1
+        if [[ $c == '2>' ]]; then
+          if [[ ${cmd:i:4} == '2>&1' ]]; then
+            i=$(( i + 4 ))
+            case ${cmd:i:1} in
+              ''|' '|$'\t'|$'\n'|';'|'|'|'&'|'<'|'>') continue ;;
+              *) return 1 ;;
+            esac
+          fi
+          i=$(( i + 2 ))
+          if [[ ${cmd:i:1} == '>' ]]; then i=$(( i + 1 )); fi
+          writes=1
+        elif [[ $c == '>' ]]; then
+          i=$(( i + 1 ))
+          if [[ ${cmd:i:1} == '>' ]]; then i=$(( i + 1 )); fi
+          writes=1
+        elif [[ ${cmd:i+1:1} == '<' ]]; then
+          # A heredoc: <<'NAME' and nothing else.
+          [[ -z $heredoc ]] || return 1
+          [[ ${cmd:i+2:1} == "'" ]] || return 1
+          rest=${cmd:i+3}
+          [[ $rest == *"'"* ]] || return 1
+          delim=${rest%%"'"*}
+          [[ -n $delim && $delim != *[!A-Za-z0-9_]* ]] || return 1
+          i=$(( i + 3 + ${#delim} + 1 ))
+          case ${cmd:i:1} in
+            ''|' '|$'\t'|$'\n'|';'|'|'|'&'|'<'|'>') ;;
+            *) return 1 ;;
+          esac
+          heredoc=$delim
+          continue
+        else
+          i=$(( i + 1 ))
+        fi
+        redirect_target=1
+        continue
+        ;;
+    esac
+
+    if (( ending )); then
+      (( ! redirect_target )) || return 1
+      if (( in_command )); then
+        if [[ $name == git ]] && (( git_state != 3 )); then return 1; fi
+        if [[ $name == gh && -z $gh_command ]]; then return 1; fi
+        if [[ $builtin_names != *" $name "* ]]; then
+          program_count=$(( program_count + 1 ))
+          (( ! writes )) || program_writer_count=$(( program_writer_count + 1 ))
+        fi
+        (( ! writes )) || writer_count=$(( writer_count + 1 ))
+        in_command=0 name='' writes=0 git_state=0 git_sub='' gh_group='' gh_command=''
+      fi
+      case $c in
+        '')
+          (( ! need_command )) || return 1
+          [[ -z $heredoc ]] || return 1
+          if (( writer_count )); then
+            # A file written, and git or gh, which run programs that
+            # their own files name.
+            (( ! uses_git )) || return 1
+            # A file written, and a program that the shell finds through
+            # PATH after the write: only the one program that makes every
+            # write may be a program.
+            if (( program_count )); then
+              (( program_count == 1 && program_writer_count == 1 && writer_count == 1 )) || return 1
+            fi
+          fi
+          return 0
+          ;;
+        $'\n')
+          i=$(( i + 1 ))
+          if [[ -n $heredoc ]]; then
+            # The body runs up to a line that is exactly the delimiter.
+            while :; do
+              (( i < n )) || return 1
+              rest=${cmd:i}
+              line=${rest%%$'\n'*}
+              i=$(( i + ${#line} + 1 ))
+              [[ $line != "$heredoc" ]] || break
+              [[ $rest == *$'\n'* ]] || return 1
+            done
+            if (( i > n )); then i=$n; fi
+            heredoc=''
+          fi
+          ;;
+        ';')
+          i=$(( i + 1 ))
+          need_command=0
+          ;;
+        '|')
+          if [[ ${cmd:i+1:1} == '|' ]]; then i=$(( i + 2 )); else i=$(( i + 1 )); fi
+          need_command=1
+          ;;
+        '&')
+          i=$(( i + 2 ))
+          need_command=1
+          ;;
+      esac
+      continue
+    fi
+
+    # A word: one or more segments, then a character that ends the word.
+    # bare: every segment is bare text. glob: a bare segment holds "*", "?"
+    # or "[".
+    word='' bare=1 glob=0
+    while :; do
+      c=${cmd:i:1}
+      case $c in
+        [A-Za-z0-9]|_|@|%|+|=|:|,|.|/|-|^|~|\])
+          word+=$c
+          i=$(( i + 1 ))
+          ;;
+        \*|\?|\[)
+          word+=$c glob=1
+          i=$(( i + 1 ))
+          ;;
+        "'")
+          rest=${cmd:i+1}
+          [[ $rest == *"'"* ]] || return 1
+          seg=${rest%%"'"*}
+          word+=$seg bare=0
+          i=$(( i + ${#seg} + 2 ))
+          ;;
+        '"')
+          if [[ -z $word && $bare == 1 && ${cmd:i:10} == "\"\$(cat <<'" ]]; then
+            # The commit message: the whole word, as an argument of git
+            # commit, on a line that opens no other heredoc.
+            [[ $name == git && $git_state == 3 && $git_sub == commit ]] || return 1
+            (( ! redirect_target )) || return 1
+            [[ -z $heredoc ]] || return 1
+            rest=${cmd:i+10}
+            [[ $rest == *"'"* ]] || return 1
+            delim=${rest%%"'"*}
+            [[ -n $delim && $delim != *[!A-Za-z0-9_]* ]] || return 1
+            i=$(( i + 10 + ${#delim} + 1 ))
+            [[ ${cmd:i:1} == $'\n' ]] || return 1
+            i=$(( i + 1 ))
+            while :; do
+              (( i < n )) || return 1
+              rest=${cmd:i}
+              [[ $rest == *$'\n'* ]] || return 1
+              line=${rest%%$'\n'*}
+              i=$(( i + ${#line} + 1 ))
+              [[ $line != "$delim" ]] || break
+              case $line in
+                *'('*|*')'*|*"'"*|*'"'*|*'`'*|*'\'*|*'$'*) return 1 ;;
+              esac
+            done
+            [[ ${cmd:i:2} == ')"' ]] || return 1
+            i=$(( i + 2 ))
+            [[ -z ${cmd:i:1} || ${cmd:i:1} == $'\n' ]] || return 1
+            word+='commit message' bare=0
+            continue
+          fi
+          rest=${cmd:i+1}
+          [[ $rest == *'"'* ]] || return 1
+          seg=${rest%%'"'*}
+          case $seg in
+            *'$'*|*'`'*|*'\\'*|*\\$'\n'*|*\\) return 1 ;;
+          esac
+          word+=$seg bare=0
+          i=$(( i + ${#seg} + 2 ))
+          ;;
+        *) break ;;
+      esac
+    done
+    [[ -n $word || $bare == 0 ]] || return 1
+    case $c in
+      ''|' '|$'\t'|$'\n'|';'|'|'|'&') ;;
+      '<'|'>') [[ $bare == 0 || $word == *[!0-9]* ]] || return 1 ;;
+      *) return 1 ;;
+    esac
+
+    if (( redirect_target )); then
+      redirect_target=0
+      continue
+    fi
+
+    if (( ! in_command )); then
+      (( bare )) || return 1
+      [[ $word != *=* ]] || return 1
+      [[ $word == git || $word == gh || $builtin_names == *" $word "* || $program_names == *" $word "* ]] || return 1
+      in_command=1 name=$word need_command=0
+      case $word in
+        cp|mv|rm|mkdir|touch|tee) writes=1 ;;
+        git|gh) uses_git=1 ;;
+      esac
+      continue
+    fi
+
+    case $name in
+      git)
+        (( ! glob )) || return 1
+        case $git_state in
+          0)
+            if [[ $word == -C ]]; then
+              git_state=1
+            elif [[ $word != *[!a-z]* && $git_subcommands == *" $word "* ]]; then
+              git_state=3 git_sub=$word
+            else
+              return 1
+            fi
+            ;;
+          1) git_state=2 ;;
+          2)
+            [[ -n $word && $word != *[!a-z]* && $git_subcommands == *" $word "* ]] || return 1
+            git_state=3 git_sub=$word
+            ;;
+          3)
+            # --output, or the beginning of it, before any "=".
+            option=${word%%=*}
+            if [[ $option == --o* && --output == "$option"* ]]; then writes=1; fi
+            if [[ $git_sub == grep ]]; then
+              [[ $word != --op* ]] || return 1
+              [[ $word != -* || $word == --* || $word != *O* ]] || return 1
+            fi
+            ;;
+        esac
+        ;;
+      gh)
+        (( ! glob )) || return 1
+        [[ $word != -- ]] || return 1
+        [[ $gh_group != pr || $word != create ]] || return 1
+        if [[ -z $gh_group ]]; then
+          [[ -n $word && $word != *[!a-z]* && $gh_commands == *" $word/"* ]] || return 1
+          gh_group=$word
+        elif [[ -z $gh_command ]]; then
+          [[ -n $word && $word != *[!a-z]* && $gh_commands == *" $gh_group/$word "* ]] || return 1
+          gh_command=$word
+        fi
+        ;;
+      test|'[')
+        (( ! glob )) || return 1
+        [[ $word != -*v* ]] || return 1
+        ;;
+      diff)
+        (( ! glob )) || return 1
+        [[ $word != --pa* ]] || return 1
+        [[ $word != -* || $word == --* || $word != *l* ]] || return 1
+        ;;
+      rg)
+        (( ! glob )) || return 1
+        [[ $word != --pre* && $word != --hostname-bin* && $word != --search-zip* ]] || return 1
+        [[ $word != -* || $word == --* || $word != *z* ]] || return 1
+        ;;
+      sort)
+        (( ! glob )) || return 1
+        [[ $word != --co* ]] || return 1
+        if [[ $word == --o* ]] || [[ $word == -* && $word != --* && $word == *o* ]]; then writes=1; fi
+        ;;
+      uniq)
+        (( ! glob )) || return 1
+        if [[ $word == - || $word == -- || $word != -* ]]; then writes=1; fi
+        ;;
+      xxd)
+        (( ! glob )) || return 1
+        if [[ $word == - || $word == -- || $word != -* || $word == -*r* ]]; then writes=1; fi
+        ;;
+    esac
+  done
+}
+
 input=$(cat)
 tool_name=$(echo "$input" | jq -r '.tool_name // empty')
 tool_input=$(echo "$input" | jq -r '.tool_input.command // empty')
@@ -73,6 +629,18 @@ cwd=$(echo "$input" | jq -r '.cwd // empty')
 
 # Only check gh pr create commands
 if [[ "$tool_name" != "Bash" ]]; then
+  exit 0
+fi
+if [[ "$tool_input" != *"gh pr create"* ]]; then
+  exit 0
+fi
+
+# Some commands only mention "gh pr create": a search for the words, a file
+# written from a quoted heredoc, a commit message. Such a command passes here
+# when it is a sentence of the language that only_mentions_pr_create
+# accepts. Every other command that contains the words is checked below, as
+# a pull request would be.
+if only_mentions_pr_create "$tool_input"; then
   exit 0
 fi
 
@@ -88,6 +656,7 @@ case "$tool_input" in
     [[ "$tool_input" =~ $body_re ]] ||
       cannot_check "the body argument could not be read from the command"
     flag=${BASH_REMATCH[1]}
+    written=${BASH_REMATCH[2]}
     arg="${BASH_REMATCH[3]}${BASH_REMATCH[4]}${BASH_REMATCH[5]}"
 
     case "$flag" in
@@ -101,6 +670,23 @@ case "$tool_input" in
             deny_missing
           fi
           cannot_check "the body is read from stdin"
+        fi
+
+        # The shell expands these before gh sees the path, and this script
+        # does not: the path as written here names no file. In single quotes
+        # they are part of the name. In double quotes a ~ is too.
+        needs_expanding=false
+        case "$written" in
+          "$sq"*) ;;
+          '"'*)
+            case "$arg" in *'$'*|*'`'*) needs_expanding=true ;; esac
+            ;;
+          *)
+            case "$arg" in *'$'*|*'`'*|'~'*) needs_expanding=true ;; esac
+            ;;
+        esac
+        if $needs_expanding; then
+          cannot_check "the body file path $arg holds a shell variable, a command substitution, or a ~, and this check does not expand them. The body may well have the keyword. Write the path out in full to have it checked"
         fi
 
         case "$arg" in
