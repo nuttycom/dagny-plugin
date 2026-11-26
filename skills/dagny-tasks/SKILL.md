@@ -11,10 +11,20 @@ tasks, statuses, and dependencies.
 
 ## Authentication
 
-MCP tools require OAuth authentication. The user identity is derived from
-the JWT session automatically — no `user_id` parameter is needed. If the
-MCP connection shows "requires authentication", use the Authenticate option
-to complete the OAuth flow.
+The tools act as the Dagny user whose credential the MCP connection
+carries; no tool takes a `user_id` argument. The credential is one of
+these:
+
+- The access token of a sign-in through the browser (OAuth). If the MCP
+  connection shows "requires authentication", use the Authenticate option
+  to complete the OAuth flow.
+- A personal access token, sent as the header `Authorization: Bearer
+  <token>`, for an agent that cannot sign in through a browser.
+
+A change or reset of the user's password revokes all of the user's
+personal access tokens at once. A client that signed in through the
+browser keeps working until its access token expires, at most an hour
+later, and must then sign in again.
 
 ## MCP Tools
 

@@ -50,9 +50,58 @@ Restart Claude Code. Then authenticate the MCP server:
 2. Select the `dagny` server. It shows "requires authentication".
 3. Select **Authenticate**, and sign in to Dagny in the browser window that
    opens.
+4. Dagny then shows a page with a **Continue** link. Select it.
+
+If Claude Code runs on a different machine from your browser, for example
+over SSH, in a container, or in a cloud session, the page after
+**Continue** may fail to load. Then copy that page's URL from the
+browser's address bar, and paste it into the Claude Code session.
 
 To check the connection, ask Claude to run `whoami`. It answers with your
 Dagny username.
+
+### Connecting without a browser
+
+An agent that runs with no person at a browser, such as a scheduled job
+or a CI run, cannot sign in this way. It can use a personal access token
+instead. A personal access token is a secret that you create in Dagny,
+and a request that carries it acts as you.
+
+1. In Dagny, open your user settings. Under **Access Tokens**, select
+   **New token**. Give the token a name, and choose when it expires: in 30
+   days, in 90 days, in 1 year, or never. If your account has a password,
+   enter it too.
+2. Copy the token. Dagny shows it once, and cannot show it again.
+3. Register Dagny's MCP server in Claude Code with the token as a header:
+
+   ```sh
+   claude mcp add --scope user --transport http dagny https://dagny.co/mcp --header "Authorization: Bearer <token>"
+   ```
+
+   The dialog that shows the token also shows this command, with the token
+   filled in. Claude Code before version 2.1.157 ignores the header for a
+   server that offers a browser sign-in, as Dagny does, so use version
+   2.1.157 or later.
+
+With the plugin installed, Claude Code then has two entries for the same
+server: the plugin's own, and this one. It connects once, with the token,
+and skips the plugin's entry, because both name the same URL. An entry
+named `dagny` that a project has of its own, at local or project scope,
+takes precedence over this one in that project.
+
+While Claude Code uses this entry, it does not fall back to the browser
+sign-in: when the token stops working, the connection fails. To go back
+to the browser sign-in, remove this entry with
+`claude mcp remove --scope user dagny`.
+
+A token acts as you in every project that you belong to. It cannot change
+your password, delete your account, manage access tokens, link a GitHub
+account, or use the site administration. It stops working in these cases:
+
+- It expires.
+- You revoke it under **Access Tokens**.
+- Your password is changed or reset. That revokes all of your tokens.
+- Your account is deleted.
 
 ## Updating
 
