@@ -274,7 +274,7 @@ All feature work and bug fixes follow this workflow:
 3. **Implement**: Make changes, build, test.
 4. **Commit**: Reference the GitHub issue with `Fixes #N` in the commit message.
 5. **Push and create PR**: Push the branch, create a PR with `gh pr create`.
-6. **Update task status**: Transition to "In Review" after the PR is created.
+6. **Update task status**: Transition to "In Review" when the PR is ready for review. If you open the PR as a draft, wait until it is marked ready.
 7. **Switch back to default branch**: Continue with the next task.
 
 ### PR Conventions
@@ -295,8 +295,8 @@ Use `list_statuses` to get status UUIDs and `list_transitions` to see which
 transitions are allowed from the current status.
 
 - **Starting work**: transition to "In Progress"
-- **PR created**: transition to "In Review"
-- **User verified**: only the user marks tasks "Complete" after verification
+- **PR ready for review**: transition to "In Review"
+- **Complete**: an agent never sets it. The user does, after verifying the work
 
 ## Workflow Details
 
@@ -368,6 +368,6 @@ user UUIDs. Every user that `assignee_id`, `collaborator_ids`, or
 - Tag tasks by area: `server`, `client`, `github`, `mcp`, `deploy`, `security`, etc.
 - Set `value` on goal-level tasks to drive priority propagation.
 - Build out the task graph before starting work — plan first, then execute.
-- Always set tasks to "In Review" after implementation, not "Complete".
+- Set tasks to "In Review" when the PR is ready for review, never to "Complete".
 - Use `get_task` with `short_id` to look up GitHub issue numbers before creating PRs.
 - Push tasks to GitHub (`push_task_to_github`) before creating branches so `Fixes #N` works.

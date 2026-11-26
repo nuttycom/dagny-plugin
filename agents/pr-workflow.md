@@ -14,7 +14,7 @@ After code changes are implemented, you handle:
 2. **Branch creation** — create a properly named feature/fix branch
 3. **Commit** — stage and commit with `Fixes #N` referencing the GitHub issue
 4. **PR creation** — push and create a PR with proper conventions
-5. **Status update** — transition the Dagny task to "In Review"
+5. **Status update** — transition the Dagny task to "In Review" once the PR is ready for review
 
 ## Process
 
@@ -40,13 +40,16 @@ After code changes are implemented, you handle:
      ## Test plan
      - [ ] verification steps
      ```
-9. Call `update_task` to transition the task to "In Review" status.
+9. Once the PR is ready for review, call `update_task` with `project_id`, the
+   task's UUID as `task_id`, and `status_id` set to the UUID of the
+   "In Review" status. If the PR was opened as a draft, do this when it is
+   marked ready.
 10. Switch back to the default branch.
 
 ## Important conventions
 
 - NEVER create a PR without `Fixes #N` in the body — this links the PR to
   the GitHub issue and auto-closes the Dagny task on merge via webhook.
-- ALWAYS transition the task to "In Review" after PR creation, never to "Complete".
+- ALWAYS transition the task to "In Review" when the PR is ready for review, never to "Complete".
 - Use `list_statuses` and `list_transitions` to find the correct status UUID.
 - If the user hasn't specified a reviewer, ask who should review.
