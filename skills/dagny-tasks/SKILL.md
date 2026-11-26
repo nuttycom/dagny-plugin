@@ -36,15 +36,18 @@ to complete the OAuth flow.
 | `mcp__dagny__add_project_repo` | Link a GitHub repo to a project and check the Dagny App is installed on it (project admins). Relay `action_required` to the user when the App is missing |
 | `mcp__dagny__set_repo_import_policy` | Set what a project mirrors unasked from a linked repo: `all`, `manual`, or `blockers` (project admins) |
 | `mcp__dagny__import_github_issues` | Import issues from a linked repo as tasks, with their blockers unless `include_blockers` is false; per-item outcomes, and `action_required` to relay when a repo's App token could not be obtained |
+| `mcp__dagny__list_github_issues` | The open issues of a linked repo, or of every linked repo when `repo_id` is left out, each with `mirrored`: whether the project already mirrors it. `only_new` keeps the unmirrored issues that are not pull requests; `limit` (1 to 200, default 200) and `offset` take a window, and `total` counts the issues before the window. A repo that cannot be read is named under `unreadable_repos`; relay `action_required` |
+| `mcp__dagny__import_all_github_issues` | Import the open issues of a linked repo (`repo_id`) that the project does not yet mirror, pull requests left out, with their blockers unless `include_blockers` is false. Answers a `status`: `nothing_new`, `unreadable`, or `imported` with `requested`, `remaining`, and each issue's result in `outcomes`; call again while `remaining` is above zero. `remaining` leaves out the issues in `requested`, so read `outcomes` even when it is zero. An issue whose import failed is still not mirrored, so a later call can choose it again; when the same issues keep failing, import the others with `import_github_issues`. Relay `action_required` when a repo cannot be read |
 | `mcp__dagny__refresh_task_github` | Refresh a task from its linked issue or pull request and return the report (conflicts, dependencies, imported blockers, truncation) |
 | `mcp__dagny__list_task_prs` | List pull requests linked to a task with review state. Requires `project_id`, and the task must belong to that project |
 | `mcp__dagny__get_task_history` | Get event history for a task from the event log. Accepts `task_id` (UUID) or `short_id` (integer) |
-| `mcp__dagny__list_linear_teams` | List the project's Linear workspaces and linked teams with keys and import policies. Relay `action_required` to the user when no workspace is connected: connecting takes a browser |
-| `mcp__dagny__link_linear_team` | Link a Linear team by key, from those Linear grants Dagny that the user's own Linear account can read, optionally setting its import policy (project admins). Relay `action_required` when the user must first connect their own Linear account: connecting takes a browser |
-| `mcp__dagny__set_linear_team_import_policy` | Set a linked team's import policy: `all` (every new issue becomes a task) or `manual` (only issues imported on request) (project admins) |
-| `mcp__dagny__list_linear_issues` | One page of a linked team's open issues, most recently updated first, each with a `disposition`: `new` (importing builds a task from Linear), `linksExisting` (importing links the task already mirroring the GitHub issue in `githubRef`), `viaGitHub` (importing mirrors `githubRef` from GitHub first), or `imported`; a query shaped like `ENG-12` finds that issue, any other matches titles; pass `nextCursor` back as `cursor` |
+| `mcp__dagny__list_linear_teams` | List the project's Linear workspaces and linked teams. Each team gives its `teamId`, `key`, `importPolicy`, and `reviewSubIssues`. Relay `action_required` to the user when no workspace is connected: connecting takes a browser |
+| `mcp__dagny__link_linear_team` | Link a Linear team, by `team_key` or `team_id` (see Linear teams below), from those Linear grants Dagny that the user's own Linear account can read, optionally setting its import policy (project admins). Relay `action_required` when the user must first connect their own Linear account: connecting takes a browser |
+| `mcp__dagny__set_linear_team_import_policy` | Set the import policy of a linked team, named by `team_key` or `team_id`: `all` (every new issue becomes a task) or `manual` (only issues imported on request) (project admins) |
+| `mcp__dagny__set_linear_team_review_sub_issues` | Turn on (`enabled: true`) or off (`enabled: false`) the creation of a Linear sub-issue for each review task, in a linked team named by `team_key` or `team_id` (project admins). A review task is the task Dagny keeps for one reviewer of a pull request; its sub-issue is made under the team's Linear issue that the pull request resolves. Turning the switch on creates no sub-issue in that call. Answers `team_key`, `team_id`, and `review_sub_issues` |
+| `mcp__dagny__list_linear_issues` | One page of the open issues of a linked team, named by `team_key` or `team_id`, most recently updated first, each with a `disposition`: `new` (importing builds a task from Linear), `linksExisting` (importing links the task already mirroring the GitHub issue in `githubRef`), `viaGitHub` (importing mirrors `githubRef` from GitHub first), or `imported`; a query shaped like `ENG-12` finds that issue, any other matches titles; pass `nextCursor` back as `cursor` |
 | `mcp__dagny__import_linear_issues` | Import Linear issues by identifier; per-item outcomes (imported, linked to the existing mirror of its GitHub issue, imported through GitHub, `teamNotLinked`, `notFound`, …), and `action_required` to relay when the workspace must be reconnected. An issue of a team the user's own Linear account cannot read is `notFound` |
-| `mcp__dagny__push_task_to_linear` | Create a Linear issue from a task in a linked team (by `team_key`) and link them; it starts in the state the team's status map gives the task's status, carries the task's GitHub issues, and mirrors its blockers and dependents already on Linear as blocks relations. Refused for a task already on Linear or whose GitHub issue already has a Linear issue; relay `action_required` when the workspace must be reconnected |
+| `mcp__dagny__push_task_to_linear` | Create a Linear issue from a task in a linked team (by `team_key` or `team_id`) and link them; it starts in the state the team's status map gives the task's status, carries the task's GitHub issues, and mirrors its blockers and dependents already on Linear as blocks relations. Refused for a task already on Linear or whose GitHub issue already has a Linear issue; relay `action_required` when the workspace must be reconnected |
 | `mcp__dagny__list_labels` | List a project's labels: subsystems (authored) and objectives (derived from objective nodes), with their definitions |
 | `mcp__dagny__create_subsystem` | Create a subsystem label from a color, name, description, exclusions, and example task titles; the short code is derived from the name when left out (maintainers) |
 | `mcp__dagny__update_subsystem` | Update a subsystem's code, color, name, description, exclusions, or examples; omitted arguments keep their values (maintainers) |
@@ -150,6 +153,15 @@ A note tool takes each day as `YYYY-MM-DD`. A tool that stores a day
 (`create_note`, `update_note`) also takes `utc_offset_minutes`, the user's
 offset from UTC on that day (for example `-420` for UTC-7); it defaults
 to 0.
+
+### Linear teams
+
+A tool that acts on one Linear team takes the team as `team_key`, such
+as `ENG`, or as `team_id`. Give exactly one of the two. Two of the
+project's Linear workspaces can each have a team with the same key; then
+`team_key` is refused, and the error names each team's workspace id and
+team id. Give that `team_id` instead. For a team that the project already
+links, `list_linear_teams` answers it as `teamId`.
 
 ### get_task_history
 
