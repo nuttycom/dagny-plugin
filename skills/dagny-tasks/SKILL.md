@@ -26,8 +26,8 @@ to complete the OAuth flow.
 | `mcp__dagny__get_task` | Get full task details including GitHub links. Accepts `task_id` (UUID) or `short_id` (integer) |
 | `mcp__dagny__list_tasks` | List tasks with filters and field selection (see below) |
 | `mcp__dagny__search_tasks` | One page of tasks matching a text, short id, or GitHub issue number, as lightweight results with each task's status; open tasks only unless `include_closed` is true (see below) |
-| `mcp__dagny__create_task` | Create a task (with optional deps, tags, status, assignee, value, repo) |
-| `mcp__dagny__update_task` | Update task fields (title, description, status, deps, tags, estimate, value, assignee, collaborators) |
+| `mcp__dagny__create_task` | Create a task from a `title`, and optionally `description`, `status_id`, `estimate`, `value`, `tags`, `depends_on`, `assignee_id`, and `repo_id`, a linked GitHub repository to open the task's issue in |
+| `mcp__dagny__update_task` | Change a task's or objective's `title`, `description`, `status_id`, `estimate`, `value`, `assignee_id`, or `objective_state`, and its tags, dependencies, and collaborators (see Updating Tasks below). Takes `project_id` and `task_id`, not `short_id` |
 | `mcp__dagny__list_statuses` | List statuses configured for a project |
 | `mcp__dagny__list_transitions` | List allowed status transitions for a project |
 | `mcp__dagny__get_priority_tasks` | Get highest-priority unblocked tasks, sorted by effective value |
@@ -61,6 +61,20 @@ to complete the OAuth flow.
 | `mcp__dagny__search_notes` | Search the user's own notes for text, newest first, in one project or every project; `limit` defaults to 50, at most 200 |
 | `mcp__dagny__list_note_days` | The days `from` to `to` on which the user has notes, with counts, in one project or every project |
 
+### Argument names
+
+Every tool refuses a call that gives an argument name that its input
+schema does not declare, and the `filter` argument of `list_tasks`
+refuses an unknown key in the same way. A refused call changes nothing.
+The error names each unknown name, and the declared name that differs
+from it only in case or underscores, when there is one. Use the argument
+names exactly as this skill and the tool schemas give them.
+
+Five tools accept `short_id` in place of `task_id`: `get_task`,
+`get_task_history`, `set_label_pin`, `clear_label_pin`, and
+`list_task_notes`. Every other tool that names a task takes `task_id`,
+the task's UUID, which `get_task` and `search_tasks` answer.
+
 ### list_tasks Parameters
 
 For large projects, use these parameters to reduce context consumption:
@@ -90,7 +104,7 @@ For large projects, use these parameters to reduce context consumption:
 - **`limit`** / **`offset`**: Pagination. Use `limit=20` to cap results.
 
 **Recommended pattern for large projects**: Start with
-`list_tasks(filter={"statusIds": [<open-status-uuids>]}, fields="title,status,deps")`
+`list_tasks(project_id=<project-uuid>, filter={"statusIds": [<open-status-uuids>]}, fields="title,status,deps")`
 to get the graph shape, then use `get_task` on specific tasks for full details.
 
 **To exclude closed statuses**: call `list_statuses` first, collect the UUIDs of
@@ -214,15 +228,41 @@ haven't been started yet. Pass `status_ids` to include other statuses.
 Tasks with higher `value` propagate priority to their dependencies via
 `effectiveValue`, so leaf tasks that block high-value goals sort first.
 
-### Updating Dependencies
+### Updating Tasks
 
-When calling `update_task` with `depends_on`, provide the **complete** list
-of dependency task IDs — it replaces the existing list, not appends to it.
+`update_task` writes every field that a call gives, or, when it refuses
+the call, none of them. A call that gives no field to change answers
+"Nothing to change".
+
+- **Dependencies**: prefer `add_depends_on` and `remove_depends_on`. They
+  add and remove the named dependencies, and keep the task's other
+  dependencies. `depends_on` replaces the whole list. Give
+  `depends_on_was`, the list that you read, with it: the call is then
+  refused if the list changed since, and the refusal names the current
+  list. `depends_on` cannot be combined with `add_depends_on` or
+  `remove_depends_on`.
+- A dependency on the task itself, or one that would close a cycle of
+  dependencies, is refused. The answer names the tasks of the cycle by
+  short id, and a task of a project that you are not a member of as "a
+  task of another project". Leave that dependency out.
+- **Tags**: prefer `add_tags` and `remove_tags`, which keep the task's
+  other tags. `tags` replaces the whole set, so it removes a tag that
+  another writer added since you read the task. It cannot be combined
+  with `add_tags` or `remove_tags`. `add_tags` cannot hold an empty tag.
+- **Objectives**: `objective_state` sets the state of an objective:
+  `active`, `paused`, or `retired`. An objective has no status and no
+  estimate.
 
 ### Task Assignment
 
-Tasks support `assignee_id` (primary assignee) and `collaboratorIds`
-(additional collaborators). Use project member UUIDs for these fields.
+`assignee_id` sets a task's primary assignee, and `null` unassigns it.
+For collaborators, prefer `add_collaborators` and `remove_collaborators`,
+which keep the task's other collaborators. `collaborator_ids` replaces
+the whole set, and cannot be combined with them. These arguments take
+user UUIDs. Every user that `assignee_id`, `collaborator_ids`, or
+`add_collaborators` names must be a member of the project;
+`remove_collaborators` can name any user. `whoami` answers your own
+`user_id`.
 
 ## Best Practices
 
