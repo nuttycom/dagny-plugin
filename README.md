@@ -14,7 +14,7 @@ pull-request workflow.
 | Skill `dagny-tasks` | How to use the tools: task references, filters, and the PR-based workflow. |
 | Agent `task-planner` | Breaks a feature or bug into a graph of tasks with dependencies, estimates, and values. |
 | Agent `pr-workflow` | Creates the branch and PR for an implemented task and updates the task's status. |
-| Hook (before `gh pr create`) | Blocks a PR whose body has no `Fixes #N`, `Closes #N`, or `Resolves #N`. |
+| Hook (before `gh pr create`) | Asks you before it lets Claude create a PR whose body has no `Fixes #N`, `Closes #N`, or `Resolves #N`, or whose body it cannot read. It never blocks a command, and it says nothing when the command gives no body. |
 | Hook (after `git commit`) | Reminds Claude to update the Dagny task when a commit closes an issue. |
 
 ## Requirements
