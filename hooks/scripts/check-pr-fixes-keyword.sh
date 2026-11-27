@@ -1,23 +1,51 @@
 #!/usr/bin/env bash
-# PreToolUse hook for Bash(gh pr create:*)
-# Reads the tool use input from stdin and checks that the PR body
-# contains a "Fixes #N" closing keyword.
+# PreToolUse hook for Bash commands that create a pull request with
+# "gh pr create".
+#
+# Reads the tool use input from stdin, and looks in the body of the pull
+# request for a closing keyword such as "Fixes #N". Merging a pull request
+# with such a keyword closes the issue, and Dagny then completes the task
+# that the issue belongs to.
+#
+# The hook is a reminder. It never refuses a command. Its outcomes:
+#
+# - The body has a closing keyword: the hook says nothing.
+# - The body has no closing keyword: the hook asks the operator. A pull
+#   request that closes no issue can be what is wanted.
+# - The command gives a body that the hook cannot read: the hook asks the
+#   operator, and says why.
+# - The command has no body option: the hook says nothing. See the last
+#   case of the statement at the end of this file.
 
 set -euo pipefail
 
-# Hand the decision to the operator, saying why the check could not be carried
-# out. Deferring instead would let the command through unremarked wherever it is
-# already permitted, which is the silent pass this hook exists to avoid: a check
-# that stops checking without saying so reads as a check that passed.
-cannot_check() {
+# Ask the operator to decide, and end the hook.
+#
+# Inputs: the reason to show the operator.
+ask() {
   jq -n --arg why "$1" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "ask",
-      permissionDecisionReason: ("Could not verify that the PR body has a closing keyword (Fixes #N, Closes #N, or Resolves #N): " + $why + ". Check that the issue will be closed on merge before allowing this.")
+      permissionDecisionReason: $why
     }
   }'
   exit 0
+}
+
+# Ask the operator because the command gives a body that could not be read.
+# Saying nothing here would let the command through wherever it is already
+# permitted, and a check that stops checking without saying so reads as a
+# check that passed.
+#
+# Inputs: why the body could not be read.
+cannot_check() {
+  ask "Could not verify that the PR body has a closing keyword (Fixes #N, Closes #N, or Resolves #N): $1. Check that the issue will be closed on merge before allowing this."
+}
+
+# Ask the operator because the body was read, and it has no closing keyword.
+ask_missing() {
+  ask "The PR body has no closing keyword (Fixes #N, Closes #N, or Resolves #N), so merging this pull request will close no issue. Allow this if that is intended. Otherwise add a keyword to the body."
 }
 
 # GitHub links an issue from a PR body via any of nine keyword forms, and the
@@ -31,19 +59,20 @@ has_keyword() {
   local repo='[-_a-z0-9.]+/[-_a-z0-9.]+'
   local issue="((${repo})?#[0-9]+|https?://github\.com/${repo}/issues/[0-9]+)"
 
-  echo "$1" | grep -qiE "(^|[^[:alnum:]])${keyword}[[:space:]]+${issue}"
+  # The text comes in a here-string, not through a pipe: grep stops at the
+  # first match, and under pipefail a writer that it cut off would turn the
+  # match into a failure.
+  grep -qiE "(^|[^[:alnum:]])${keyword}[[:space:]]+${issue}" <<< "$1"
 }
 
-# Refuse the command: the body was read, and it has no closing keyword.
-deny_missing() {
-  jq -n '{
-    hookSpecificOutput: {
-      hookEventName: "PreToolUse",
-      permissionDecision: "deny",
-      permissionDecisionReason: "PR body is missing a closing keyword (Fixes #N, Closes #N, or Resolves #N). Add one to auto-close the linked GitHub issue on merge."
-    }
-  }'
-  exit 0
+# Print a path for a reason shown to the operator, cut to a length that a
+# person can read.
+shown_path() {
+  local path=$1
+  if (( ${#path} > 200 )); then
+    path="${path:0:200}..."
+  fi
+  printf '%s' "$path"
 }
 
 # Print the text of the heredoc that feeds the gh pr create line of a
@@ -66,10 +95,12 @@ heredoc_body() {
   $in_body
 }
 
+# Input that cannot be decoded gets no answer: the hook has nothing to say
+# about a command that it cannot read, and must not fail on it.
 input=$(cat)
-tool_name=$(echo "$input" | jq -r '.tool_name // empty')
-tool_input=$(echo "$input" | jq -r '.tool_input.command // empty')
-cwd=$(echo "$input" | jq -r '.cwd // empty')
+tool_name=$(jq -r '.tool_name? // empty' <<< "$input" 2>/dev/null) || exit 0
+tool_input=$(jq -r '.tool_input.command? // empty' <<< "$input" 2>/dev/null) || exit 0
+cwd=$(jq -r '.cwd? // empty' <<< "$input" 2>/dev/null) || exit 0
 
 # Only check gh pr create commands
 if [[ "$tool_name" != "Bash" ]]; then
@@ -88,6 +119,7 @@ case "$tool_input" in
     [[ "$tool_input" =~ $body_re ]] ||
       cannot_check "the body argument could not be read from the command"
     flag=${BASH_REMATCH[1]}
+    written=${BASH_REMATCH[2]}
     arg="${BASH_REMATCH[3]}${BASH_REMATCH[4]}${BASH_REMATCH[5]}"
 
     case "$flag" in
@@ -98,9 +130,28 @@ case "$tool_input" in
           # (a pipe, a redirect) is not visible from here.
           if body=$(heredoc_body "$tool_input"); then
             has_keyword "$body" && exit 0
-            deny_missing
+            ask_missing
           fi
           cannot_check "the body is read from stdin"
+        fi
+
+        # The shell can expand a "$", a backtick, and a leading ~ before gh
+        # sees the path, and this script does not: the path as written here
+        # may name no file. In single quotes they are part of the name. In
+        # double quotes a ~ is too. This does not follow the shell exactly: a
+        # "$" that the shell would leave alone is asked about as well.
+        needs_expanding=false
+        case "$written" in
+          "$sq"*) ;;
+          '"'*)
+            case "$arg" in *'$'*|*'`'*) needs_expanding=true ;; esac
+            ;;
+          *)
+            case "$arg" in *'$'*|*'`'*|'~'*) needs_expanding=true ;; esac
+            ;;
+        esac
+        if $needs_expanding; then
+          cannot_check "the body file path $(shown_path "$arg") holds a \$, a backtick, or a leading ~, which the shell may expand, and this check does not expand them. The body may well have the keyword. Write the path out in full to have it checked"
         fi
 
         case "$arg" in
@@ -108,12 +159,14 @@ case "$tool_input" in
           *) path="${cwd:-.}/$arg" ;;
         esac
 
-        if [[ ! -r "$path" ]]; then
-          cannot_check "the body file $arg could not be read"
+        # Only a regular file is read. A directory has no text, and reading
+        # a named pipe would wait for a writer.
+        if [[ ! -f "$path" || ! -r "$path" ]] || ! body=$(cat "$path" 2>/dev/null); then
+          cannot_check "the body file $(shown_path "$arg") could not be read"
         fi
 
         # The file is the body exactly, so its verdict is final either way.
-        if has_keyword "$(cat "$path")"; then
+        if has_keyword "$body"; then
           exit 0
         fi
         ;;
@@ -124,21 +177,24 @@ case "$tool_input" in
 
         # The extracted body is only as good as the quoting the regex could
         # follow: an apostrophe in the body ends the capture early, and what
-        # survives may not be the whole body. Before refusing, look at the
-        # command as a whole -- if the keyword is in there somewhere, this is
-        # not a body we can honestly say lacks one.
+        # survives may not be the whole body. Before saying that the body
+        # lacks a keyword, look at the command as a whole -- if the keyword
+        # is in there somewhere, this is not a body we can honestly say lacks
+        # one.
         if has_keyword "$tool_input"; then
           cannot_check "the body could not be separated from the rest of the command, and a closing keyword appears somewhere in it"
         fi
         ;;
     esac
-    deny_missing
+    ask_missing
     ;;
-  # With no body flag at all, the body comes from --fill, a pull request
-  # template, or an editor, none of which are visible from here.
-  *"gh pr create"*)
-    cannot_check "the command has no --body or --body-file; the body comes from --fill, a pull request template, or an editor"
-    ;;
+  # Every other command gets no answer. That includes a command that
+  # contains the words "gh pr create" and has no body option. Most often such
+  # a command only mentions the words: a search for them, a commit message, a
+  # file written from a heredoc. When it does create a pull request, the body
+  # comes from --fill, a pull request template, or an editor, and none of
+  # these is visible from here: a question would give the operator nothing
+  # to check.
   *)
     exit 0
     ;;
